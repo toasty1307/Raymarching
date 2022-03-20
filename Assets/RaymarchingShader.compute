@@ -1,0 +1,96 @@
+#pragma kernel cs_main
+
+RWTexture2D<float4> result;
+float2 point_location;
+float2 direction;
+
+uint width, height;
+
+void draw_sphere(float2 center, float radius, float4 color, uint2 id)
+{
+    float dist = distance(id * 8, center);
+    if (dist < radius)
+        result[id] = color;
+}
+
+void draw_box(float2 center, float2 size, float4 color, uint2 id)
+{
+    float2 p = id * 8 - center;
+    if (abs(p.x) < size.x && abs(p.y) < size.y)
+        result[id] = color;
+}
+
+void draw_line(float2 p1, float2 p2, float4 color, uint2 id)
+{
+    float dist1 = distance(id * 8, p1);
+    float dist2 = distance(id * 8, p2);
+    float dist3 = distance(p1, p2);
+    if (dist1 + dist2 - dist3 < 0.02f)
+        result[id] = color;
+}
+
+float distance_to_box(float2 center, float2 size, float2 p)
+{
+    float2 q = abs(p - center) - size;
+    return length(max(q,0.0)) + min(max(q.x,max(q.y,0.0)),0.0);
+}
+
+float distance_to_sphere(float2 center, float radius, float2 p)
+{
+    return distance(p, center) - radius;
+}
+
+void draw_circle(float2 center, float radius, float4 color, uint2 id)
+{
+    float dist = distance(id * 8, center);
+    if (dist < radius && dist > radius - 10.0f)
+        result[id] = color;
+}
+
+float distance_to_scene(float2 p)
+{
+    float dist = distance_to_box(float2(width, height * 4), float2(width, height), p);
+
+    float dist2 = distance_to_box(float2(width * 4, height * 2), float2(width, height), p);
+
+    float dist3 = distance_to_sphere(float2(width * 6, height * 6), height, p);
+    float dist4 = distance_to_sphere(float2(width * 4.5, height * 5), height, p);
+
+    return min(min(dist, dist2), min(dist3, dist4));
+}
+
+[numthreads(8,8,1)]
+void cs_main (uint3 id : SV_DispatchThreadID)
+{
+    result[id.xy] =  float4(0.15f, 0.17f, 0.20f, 1);
+    result.GetDimensions(width, height);
+    
+    draw_sphere(float2(width * 6, height * 6), height, float4(0, 0, 0, 1), id.xy);
+    draw_sphere(float2(width * 4.5, height * 5), height, float4(0, 0, 0, 1), id.xy);
+    draw_box(float2(width, height * 4), float2(width, height), float4(0, 0, 0, 1), id.xy);
+    draw_box(float2(width * 4, height * 2), float2(width, height), float4(0, 0, 0, 1), id.xy);
+
+    // eye
+    draw_sphere(point_location, 20, float4(1, 0, 0, 1), id.xy);
+
+    float2 p2 = direction;
+
+    float2 circle_start = point_location;
+    float2 direction2 = normalize(p2 - circle_start);
+    float dist_to_scene = distance_to_scene(circle_start);
+    /*
+    draw_line(point_location, direction2 * dist_to_scene, float4(1, 1, 1, 1), id.xy);
+    */
+
+    int i = 100;
+    while (dist_to_scene > 10.0f)
+    {
+        draw_circle(circle_start, dist_to_scene, float4(1, 1, 1, 1.0f), id.xy);
+        circle_start = circle_start + direction2 * dist_to_scene;
+        dist_to_scene = distance_to_scene(circle_start);
+        i--;
+        if (i < 0)
+            break; // i dont trust myself
+    }
+
+}
